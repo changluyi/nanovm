@@ -135,6 +135,21 @@ pub mod run_off {
 
 pub const KVM_EXIT_IO_OUT: u8 = 1;
 
+// _IOR(KVMIO, 0x81, kvm_regs) — 18 个 u64 = 144 字节
+const KVM_GET_REGS: libc::c_ulong =
+    0x8000_0000 | (144 << 16) | ((KVMIO as libc::c_ulong) << 8) | 0x81;
+
+/// x86 通用寄存器（KVM_GET_REGS 返回）
+#[derive(Debug, Default)]
+#[repr(C)]
+pub struct Regs {
+    pub rax: u64, pub rbx: u64, pub rcx: u64, pub rdx: u64,
+    pub rsi: u64, pub rdi: u64, pub rsp: u64, pub rbp: u64,
+    pub r8: u64, pub r9: u64, pub r10: u64, pub r11: u64,
+    pub r12: u64, pub r13: u64, pub r14: u64, pub r15: u64,
+    pub rip: u64, pub rflags: u64,
+}
+
 impl Vm {
     /// 分配一页宿主机内存并映射到 guest 物理地址 guest_phys
     pub fn add_memory_region(&mut self, slot: u32, guest_phys: u64, len: usize) -> Result<*mut u8, KvmError> {
@@ -257,6 +272,19 @@ unsafe fn read_u64(p: *const u8) -> u64 {
         *p, *p.add(1), *p.add(2), *p.add(3),
         *p.add(4), *p.add(5), *p.add(6), *p.add(7),
     ])
+}
+
+impl Vcpu {
+    /// 读取当前通用寄存器（在 HLT 后调用最有教学价值）
+    pub fn get_regs(&self) -> Result<Regs, KvmError> {
+        let mut regs = Regs::default();
+        if unsafe {
+            libc::ioctl(self.fd.as_raw_fd(), KVM_GET_REGS, &mut regs as *mut Regs)
+        } < 0 {
+            return Err(KvmError::Ioctl("KVM_GET_REGS", io::Error::last_os_error()));
+        }
+        Ok(regs)
+    }
 }
 
 impl Drop for GuestMemRegion {

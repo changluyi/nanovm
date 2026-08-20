@@ -34,8 +34,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vcpu = vm.create_vcpu(0)?;
 
     let start = std::time::Instant::now();
-    vcpu::run_loop(&vcpu)?;
-    eprintln!("[nanovm] guest 执行完毕，耗时 {:?}", start.elapsed());
+    let stats = vcpu::run_loop(&vcpu)?;
+    eprintln!(
+        "[nanovm] guest 执行完毕：{} 次 VM exit（其中 IO {} 次），耗时 {:?}",
+        stats.total_exits, stats.io_exits, start.elapsed()
+    );
 
     Ok(())
 }
