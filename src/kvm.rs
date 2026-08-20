@@ -133,11 +133,61 @@ pub mod run_off {
     pub const IO_DATA_OFFSET: usize = 40;
 }
 
+pub const KVM_EXIT_IO_IN: u8 = 0;
 pub const KVM_EXIT_IO_OUT: u8 = 1;
 
 // _IOR(KVMIO, 0x81, kvm_regs) — 18 个 u64 = 144 字节
 const KVM_GET_REGS: libc::c_ulong =
     0x8000_0000 | (144 << 16) | ((KVMIO as libc::c_ulong) << 8) | 0x81;
+// _IOW(KVMIO, 0x82, kvm_regs)
+const KVM_SET_REGS: libc::c_ulong =
+    0x4000_0000 | (144 << 16) | ((KVMIO as libc::c_ulong) << 8) | 0x82;
+// _IOW(KVMIO, 0x84, kvm_sregs) — 布局见下方 Sregs，共 312 字节
+const KVM_SET_SREGS: libc::c_ulong =
+    0x4000_0000 | (312 << 16) | ((KVMIO as libc::c_ulong) << 8) | 0x84;
+
+// ── struct kvm_segment（x86 uapi，24 字节）──
+#[derive(Debug, Clone, Default)]
+#[repr(C)]
+pub struct Segment {
+    pub base: u64,
+    pub limit: u32,
+    pub selector: u16,
+    pub type_: u8,
+    pub present: u8,
+    pub dpl: u8,
+    pub db: u8,
+    pub s: u8,
+    pub l: u8,
+    pub g: u8,
+    pub avl: u8,
+    pub unusable: u8,
+    pub padding: u8,
+}
+
+#[derive(Debug, Clone, Default)]
+#[repr(C)]
+pub struct Dtable {
+    pub base: u64,
+    pub limit: u16,
+    pub padding: [u16; 3],
+}
+
+// ── struct kvm_sregs（x86 uapi，312 字节）──
+#[derive(Debug, Clone, Default)]
+#[repr(C)]
+pub struct Sregs {
+    pub cs: Segment, pub ds: Segment, pub es: Segment, pub fs: Segment,
+    pub gs: Segment, pub ss: Segment, pub tr: Segment, pub ldt: Segment,
+    pub gdt: Dtable, pub idt: Dtable,
+    pub cr0: u64, pub cr2: u64, pub cr3: u64, pub cr4: u64, pub cr8: u64,
+    pub efer: u64,
+    pub apic_base: u64,
+    pub interrupt_bitmap: [u64; 4], // KVM_NR_INTERRUPTS=256 → 4 个 u64
+}
+
+const _: () = assert!(std::mem::size_of::<Segment>() == 24);
+const _: () = assert!(std::mem::size_of::<Sregs>() == 312);
 
 /// x86 通用寄存器（KVM_GET_REGS 返回）
 #[derive(Debug, Default)]
@@ -259,6 +309,11 @@ impl Vcpu {
     pub fn io_data<'a>(&self, offset: u64, count: usize) -> &'a [u8] {
         unsafe { std::slice::from_raw_parts(self.run.add(offset as usize), count) }
     }
+
+    /// 同上，可变版本 —— IN 方向由 VMM 把数据写进数据区，guest 恢复执行后从这里取
+    pub fn io_data_mut<'a>(&self, offset: u64, count: usize) -> &'a mut [u8] {
+        unsafe { std::slice::from_raw_parts_mut(self.run.add(offset as usize), count) }
+    }
 }
 
 unsafe fn read_u16(p: *const u8) -> u16 {
@@ -275,6 +330,22 @@ unsafe fn read_u64(p: *const u8) -> u64 {
 }
 
 impl Vcpu {
+    /// 设置通用寄存器（rip/rflags 等），需在第一次 KVM_RUN 前调用
+    pub fn set_regs(&self, regs: &Regs) -> Result<(), KvmError> {
+        if unsafe { libc::ioctl(self.fd.as_raw_fd(), KVM_SET_REGS, regs as *const Regs) } < 0 {
+            return Err(KvmError::Ioctl("KVM_SET_REGS", io::Error::last_os_error()));
+        }
+        Ok(())
+    }
+
+    /// 设置特殊寄存器（段寄存器/CR0-4/EFER），是"直接进长模式"的关键
+    pub fn set_sregs(&self, sregs: &Sregs) -> Result<(), KvmError> {
+        if unsafe { libc::ioctl(self.fd.as_raw_fd(), KVM_SET_SREGS, sregs as *const Sregs) } < 0 {
+            return Err(KvmError::Ioctl("KVM_SET_SREGS", io::Error::last_os_error()));
+        }
+        Ok(())
+    }
+
     /// 读取当前通用寄存器（在 HLT 后调用最有教学价值）
     pub fn get_regs(&self) -> Result<Regs, KvmError> {
         let mut regs = Regs::default();

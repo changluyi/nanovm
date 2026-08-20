@@ -10,6 +10,8 @@
 cargo run --release
 # hello from nanovm
 # [nanovm] guest 执行完毕，耗时 326.193µs
+
+cargo run --release -- echo   # 交互式 echo 机器：敲什么回什么，Ctrl-D 退出
 ```
 
 要求：Linux + `/dev/kvm`（WSL2 开启嵌套虚拟化也可）。
@@ -18,9 +20,9 @@ cargo run --release
 
 1. 打开 `/dev/kvm`，创建 VM
 2. mmap 两页内存映射进 guest 物理地址空间（代码页 @ 物理地址 0，复位向量页 @ 0xFFFF_F000）
-3. 放入手写机器码：16 位实模式汇编，往 COM1 端口（0x3f8）逐字符 `out`，最后 `hlt`
+3. 放入手写机器码：16 位实模式汇编，往 COM1 端口（0x3f8）逐字符 `out`，最后 `hlt`；echo 模式则 `in`/`out` 循环
 4. 创建 vCPU（一个线程 + 一块共享内存 kvm_run），进入 `KVM_RUN` 循环
-5. guest 每次端口写触发 `KVM_EXIT_IO`，VMM 转发到 stdout；`hlt` 则干净退出
+5. guest 每次端口写触发 `KVM_EXIT_IO`，VMM 转发到 stdout；端口读则 VMM 阻塞读 stdin 喂给 guest；`hlt` 则干净退出
 
 CPU 复位后从 0xFFFF_FFF0 取指，那里放了一条 `ljmp 0:0` 跳到主程序 —— 复位向量技巧，省掉整个固件引导链。
 
