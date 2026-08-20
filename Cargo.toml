@@ -1,0 +1,13 @@
+[package]
+name = "nanovm"
+version = "0.1.0"
+edition = "2021"
+description = "A ~500-line zero-dependency(except libc) KVM microVM, educational twin of Firecracker"
+license = "MIT"
+
+[dependencies]
+libc = "0.2"
+
+[profile.release]
+strip = true
+lto = true
