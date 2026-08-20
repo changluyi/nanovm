@@ -1,4 +1,6 @@
 //! 单元测试：不依赖 KVM 的纯逻辑验证（页表/GDT 布局）。
+// 引入的是完整模块，测试只用到其中一部分，其余符号属正常"未使用"
+#![allow(dead_code)]
 
 #[path = "../src/loader.rs"]
 mod loader;
