@@ -38,12 +38,9 @@ CPU 复位后从 0xFFFF_FFF0 取指，那里放了一条 `ljmp 0:0` 跳到主程
 Firecracker 源码中与本项目的对应关系：`vstate/vcpu.rs` ↔ `src/vcpu.rs`，
 `vmm/src/builder.rs` ↔ `src/main.rs`。
 
-## 路线图
+## 扩展方向
 
-- [x] v0.1 Hello VM（实模式 + 端口 IO）
-- [ ] v0.2 16550 UART 模拟，可交互 shell
-- [ ] v0.3 Linux 内核直启（boot protocol / zero-page）
-- [ ] v0.4 virtio-mmio blk/net
+本项目的边界就是“最小可运行的 KVM VM”。想继续深入，可以自己加：16550 UART 模拟、Linux 内核直启（boot protocol）、virtio-mmio 设备 —— 每一步都能在 Firecracker 源码里找到对照实现。
 
 ## License
 
